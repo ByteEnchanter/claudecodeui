@@ -6,28 +6,54 @@ import type {
 } from '@/shared/index.js';
 import {
   buildDefaultProviderCurrentActiveModel,
+  readAntigravityEffortVariant,
   resolveConfiguredCliExecutable,
   runProviderCliCommand,
 } from '@/shared/index.js';
 
-/** Only sibling variants actually present in the catalog are selectable. */
-function withReasoningEffort(options: ProviderModelOption[]): ProviderModelOption[] {
-  const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
-  return options.map((option) => {
-    const match = /^(.*)-(low|medium|high|xhigh|max)$/.exec(option.value);
-    if (!match) return option;
-    const values = levels.filter((level) => options.some((sibling) => sibling.value === `${match[1]}-${level}`));
-    return values.length < 2 ? option : {
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Shows adjustable families once while retaining every account-available CLI model ID. */
+function groupAntigravityModels(options: ProviderModelOption[]): ProviderModelOption[] {
+  const variantsByFamily = new Map<string, Map<string, string>>();
+  for (const option of options) {
+    const variant = readAntigravityEffortVariant(option.value);
+    if (!variant) continue;
+    const variants = variantsByFamily.get(variant.family) ?? new Map<string, string>();
+    variants.set(variant.effort, option.value);
+    variantsByFamily.set(variant.family, variants);
+  }
+
+  const groupedFamilies = new Set<string>();
+  return options.flatMap((option) => {
+    const variant = readAntigravityEffortVariant(option.value);
+    if (!variant) return [option];
+    const variants = variantsByFamily.get(variant.family);
+    if (!variants || variants.size < 2) return [option];
+    if (groupedFamilies.has(variant.family)) return [];
+    groupedFamilies.add(variant.family);
+
+    // Keep the first native ID as the family's default so stored model IDs
+    // and callers that choose a model without an effort remain valid.
+    return [{
       ...option,
-      effort: { default: match[2], values: values.map((value) => ({ value })) },
-    };
+      label: option.label === option.value
+        ? variant.family
+        : option.label.replace(/\s*\((low|medium|high|xhigh|max)\)\s*$/i, ''),
+      effort: {
+        default: variant.effort,
+        values: EFFORT_LEVELS.flatMap((value) => {
+          const modelId = variants.get(value);
+          return modelId ? [{ value, modelId }] : [];
+        }),
+      },
+    }];
   });
 }
 
-
 /** Used by AntigravityProviderModels and its tests when live discovery is unavailable; not an entitlement check. */
 export const ANTIGRAVITY_FALLBACK_MODELS: ProviderModelsDefinition = {
-  OPTIONS: withReasoningEffort([
+  OPTIONS: groupAntigravityModels([
     {
       value: 'gemini-3.8-flash-medium',
       label: 'Gemini 3.8 Flash (Medium)',
@@ -124,7 +150,7 @@ export const parseAntigravityModelsStdout = (stdout: string): ProviderModelsDefi
   }
 
   return {
-    OPTIONS: withReasoningEffort(models),
+    OPTIONS: groupAntigravityModels(models),
     DEFAULT: models[0].value,
   };
 };

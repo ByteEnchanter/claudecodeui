@@ -19,6 +19,7 @@ import {
   appendImagesInputTag,
   createCompleteMessage,
   createNormalizedMessage,
+  readAntigravityEffortVariant,
   readObjectRecord,
   normalizeAntigravityTokenUsage,
   resolveConfiguredCliExecutable,
@@ -171,7 +172,9 @@ async function runAntigravity(
   if (resolvedModel) args.push('--model', resolvedModel);
   const effort = readStringOption(options, 'effort');
   try {
-    if (effort && effort !== 'default') {
+    // Legacy sessions and queued turns can still carry an effort beside a
+    // concrete model variant. The model ID already determines the effort.
+    if (effort && effort !== 'default' && !readAntigravityEffortVariant(resolvedModel ?? '')) {
       const catalog = await context.getProviderModels();
       const model = catalog.OPTIONS.find((option) => option.value === resolvedModel);
       const allowed = model ? model.effort?.values.map((option) => option.value) ?? []

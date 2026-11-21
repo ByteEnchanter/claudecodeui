@@ -372,6 +372,50 @@ test('custom effort levels must be levels the provider supports', async () => {
   );
 });
 
+test('Antigravity custom base models can declare effort and explicit variants use their IDs', async () => {
+  const { service } = createTestService();
+  const effort = { default: 'low', values: ['low', 'high'] };
+  const base = await service.createCustomModel('antigravity', {
+    id: 'gemini-future', model: 'Gemini Future', effort,
+  });
+  const variant = await service.createCustomModel('antigravity', {
+    id: 'gemini-future-low', model: 'Gemini Future (Low)', effort,
+  });
+
+  assert.deepEqual(base.model.effort, { default: 'low', values: [{ value: 'low' }, { value: 'high' }] });
+  assert.equal(variant.model.effort, undefined);
+});
+
+test('a grouped Antigravity variant remains reserved in the custom model library', async () => {
+  const catalog = createCatalogStore();
+  const predefined = {
+    OPTIONS: [{
+      value: 'gemini-pro-high',
+      label: 'Gemini Pro',
+      effort: { values: [{ value: 'low', modelId: 'gemini-pro-low' }] },
+    }],
+    DEFAULT: 'gemini-pro-high',
+  };
+  const service = createProviderModelsService({
+    catalog,
+    settings: createSettingsStore(),
+    resolveProvider: () => ({
+      models: {
+        getSupportedModels: async () => predefined,
+        getCurrentActiveModel: async () => ({ model: predefined.DEFAULT }),
+      },
+    }),
+  });
+
+  await assert.rejects(
+    service.createCustomModel('antigravity', { id: 'gemini-pro-low', model: 'Duplicate variant' }),
+    (error) => error instanceof AppError && error.code === 'MODEL_ID_ALREADY_EXISTS',
+  );
+  catalog.createCustomProviderModel('antigravity', { id: 'gemini-pro-low', model: 'Saved variant' });
+  const models = await service.getProviderModels('antigravity');
+  assert.deepEqual(models.OPTIONS.map((option) => option.value), ['gemini-pro-high']);
+});
+
 test('allowed effort levels come from the provider, not from the built-in models this machine sees', async () => {
   // The fake adapters' built-in models declare no effort at all, which is what
   // the real OpenCode adapter returns once it narrows its catalog to OpenCode

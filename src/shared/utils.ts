@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import type { Project, ProjectSession, QuickSettingsTab, SlashCommand } from '@/shared/types';
+import type { Project, ProjectSession, ProviderModelOption, QuickSettingsTab, SlashCommand } from '@/shared/types';
 
 //----------------- DEPLOYMENT MODE ------------
 
@@ -10,6 +10,16 @@ import type { Project, ProjectSession, QuickSettingsTab, SlashCommand } from '@/
  * Read it to hide or gate features that only exist in one of the two deployments.
  */
 export const IS_PLATFORM = import.meta.env?.VITE_IS_PLATFORM === 'true';
+
+// ---------------------------
+
+//----------------- PROVIDER MODEL OPTIONS ------------
+
+/** Finds the picker option for a stored model ID, including an effort variant represented by a family. */
+export function findProviderModelOption(options: ProviderModelOption[], modelId: string): ProviderModelOption | undefined {
+  return options.find((option) => option.value === modelId
+    || option.effort?.values.some((effort) => effort.modelId === modelId));
+}
 
 // ---------------------------
 

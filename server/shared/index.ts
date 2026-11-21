@@ -51,6 +51,7 @@ export {
   createNormalizedMessage,
   findFilesRecursivelyModifiedAfter,
   generateMessageId,
+  readAntigravityEffortVariant,
   normalizeProjectPath,
   normalizeSessionName,
   parseIncomingJsonObject,

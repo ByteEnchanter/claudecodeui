@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 
-import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { beforeEach, test, vi } from 'vitest';
 
 import '@/modules/i18n';
+import { api } from '@/shared/api';
+import ComposerModelMenu from '@/modules/chat/composer/ComposerModelMenu';
 import ModelLibraryPanel from '@/modules/chat/modals/ModelLibraryPanel';
+import { writeSelectedProvider } from '@/shared/selectedProvider';
 import { resetUserPreferences } from '@/shared/userSettings';
 import type {
   CustomProviderModelInput,
@@ -62,9 +65,14 @@ const CATALOG: Partial<Record<LLMProvider, ProviderModelsDefinition>> = {
     EFFORT_LEVELS: [],
   },
   antigravity: {
-    OPTIONS: [{ value: 'gemini-pro-low', label: 'Gemini Pro Low', effort: {
-      default: 'low', values: [{ value: 'low' }, { value: 'high' }],
-    } }],
+    OPTIONS: [{
+      value: 'gemini-pro-low',
+      label: 'Gemini Pro',
+      effort: {
+        default: 'low',
+        values: [{ value: 'low', modelId: 'gemini-pro-low' }, { value: 'high', modelId: 'gemini-pro-high' }],
+      },
+    }],
     DEFAULT: 'gemini-pro-low', EFFORT_LEVELS: ['low', 'medium', 'high', 'xhigh', 'max'],
   },
   // What OpenCode serves on a machine with only OpenCode Zen connected: none of
@@ -93,8 +101,8 @@ vi.mock('@/shared/api', () => ({
         data: CATALOG[provider] ? { models: CATALOG[provider] } : null,
       }),
       capabilities: () => okJson({ success: true, data: null }),
-      sessionActiveModel: () => okJson({ success: true, data: null }),
-      setSessionActiveModel: () => okJson({ success: true, data: null }),
+      sessionActiveModel: vi.fn(() => okJson({ success: true, data: null })),
+      setSessionActiveModel: vi.fn(() => okJson({ success: true, data: null })),
       setSessionActiveEffort: () => okJson({ success: true, data: null }),
     },
   },
@@ -117,6 +125,7 @@ const createActions = () => {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   localStorage.clear();
   resetUserPreferences();
 });
@@ -210,15 +219,63 @@ test('the composer offers exactly the declared levels for a selected custom mode
   assert.deepEqual(result.current.currentProviderEffortOptions, [{ value: 'low' }, { value: 'high' }]);
 });
 
-test('AGY uses the shared effort picker and preserves a saved selection while catalogs hydrate', async () => {
-  localStorage.setItem('antigravity-effort', 'high');
+test('an existing Antigravity session uses the effort from its model ID and saves a new native variant', async () => {
+  vi.mocked(api.providers.sessionActiveModel).mockImplementationOnce(() => okJson({
+    success: true, data: { model: 'gemini-pro-high', effort: 'low', source: 'session' },
+  }) as ReturnType<typeof api.providers.sessionActiveModel>);
   const { useChatProviderState } = await import('@/modules/chat/hooks/useChatProviderState');
   const { result } = renderHook(() => useChatProviderState({
     selectedSession: { id: 'agy-session', __provider: 'antigravity' }, selectedProject: null,
   }));
-  await waitFor(() => assert.equal(result.current.providerModelsLoading, false));
-  assert.equal(result.current.provider, 'antigravity');
-  assert.equal(result.current.currentProviderModel, 'gemini-pro-low');
+  await waitFor(() => {
+    assert.equal(result.current.providerModelsLoading, false);
+    assert.equal(result.current.currentProviderModel, 'gemini-pro-high');
+  });
   assert.equal(result.current.currentProviderEffort, 'high');
-  assert.deepEqual(result.current.currentProviderEffortOptions, [{ value: 'low' }, { value: 'high' }]);
+  assert.equal(result.current.currentProviderModelOptions.length, 1);
+
+  await act(async () => {
+    await result.current.selectProviderEffort('antigravity', 'low', 'agy-session');
+  });
+
+  assert.equal(result.current.currentProviderModel, 'gemini-pro-low');
+  assert.equal(result.current.currentProviderEffort, 'low');
+  assert.deepEqual(vi.mocked(api.providers.setSessionActiveModel).mock.calls, [
+    ['antigravity', 'agy-session', 'gemini-pro-low'],
+  ]);
+});
+
+test('an Antigravity browser default keeps its concrete model through catalog hydration', async () => {
+  writeSelectedProvider('antigravity');
+  localStorage.setItem('antigravity-model', 'gemini-pro-high');
+  const { useChatProviderState } = await import('@/modules/chat/hooks/useChatProviderState');
+  const { result } = renderHook(() => useChatProviderState({ selectedSession: null, selectedProject: null }));
+
+  await waitFor(() => assert.equal(result.current.providerModelsLoading, false));
+  assert.equal(result.current.currentProviderModel, 'gemini-pro-high');
+  assert.equal(result.current.currentProviderEffort, 'high');
+  assert.equal(localStorage.getItem('antigravity-model'), 'gemini-pro-high');
+});
+
+test('the Antigravity composer displays a family label and sends one effort selection', () => {
+  const option = CATALOG.antigravity!.OPTIONS[0];
+  const onSelectEffort = vi.fn();
+  render(
+    <ComposerModelMenu
+      model="gemini-pro-high"
+      modelOptions={[option]}
+      modelsLoading={false}
+      effort="high"
+      effortOptions={option.effort!.values}
+      onSelectEffort={onSelectEffort}
+      onSelectModel={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Select model and reasoning effort' }));
+  screen.getByText('Reasoning');
+  assert.equal(screen.queryByRole('menuitemradio', { name: 'Default' }), null);
+  screen.getByRole('menuitemradio', { name: 'high', checked: true });
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'low' }));
+  assert.deepEqual(onSelectEffort.mock.calls, [['low']]);
 });

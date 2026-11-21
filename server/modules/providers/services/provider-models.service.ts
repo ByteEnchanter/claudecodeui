@@ -11,7 +11,7 @@ import type {
   ProviderModelsDefinition,
   ProviderSessionModel,
 } from '@/shared/types.js';
-import { AppError } from '@/shared/utils.js';
+import { AppError, readAntigravityEffortVariant } from '@/shared/index.js';
 
 /** Session-row access the service needs, narrowed so tests can stub it. */
 type ProviderModelsSessionStore = {
@@ -56,7 +56,8 @@ const customModelsOnlyConfigKey = (provider: LLMProvider): string => (
  * and every runtime's effort validation treat declared levels identically.
  * Rows without declared levels omit `effort` on purpose: the composer then
  * hides Reasoning and runtimes send no effort, instead of guessing levels the
- * model might reject.
+ * model might reject. Antigravity variant IDs already choose an effort, so
+ * saved overrides on those IDs are omitted from the catalog too.
  */
 const toCustomProviderModelOption = (
   record: CustomProviderModelRecord,
@@ -65,7 +66,7 @@ const toCustomProviderModelOption = (
   label: record.model,
   recordId: record.recordId,
   isCustom: true,
-  ...(record.effort
+  ...(record.effort && !(record.provider === 'antigravity' && readAntigravityEffortVariant(record.modelId))
     ? {
       effort: {
         ...(record.effort.default ? { default: record.effort.default } : {}),
@@ -87,6 +88,14 @@ const toCustomProviderModelOption = (
  */
 const readCustomModelEffortLevels = (provider: LLMProvider): string[] => (
   providerCapabilitiesService.getProviderCapabilities(provider).effortLevels
+);
+
+/** Includes concrete native variant IDs represented by a grouped option. */
+const getPredefinedModelIds = (catalog: ProviderModelsDefinition): Set<string> => new Set(
+  catalog.OPTIONS.flatMap((option) => [
+    option.value,
+    ...(option.effort?.values.flatMap(({ modelId }) => modelId ? [modelId] : []) ?? []),
+  ]),
 );
 
 /**
@@ -111,7 +120,7 @@ const mergeProviderModels = (
 ): ProviderModelsDefinition => {
   const customOptions = custom.map(toCustomProviderModelOption);
   const listOnlyCustomModels = customModelsOnly && customOptions.length > 0;
-  const builtInIds = new Set(predefined.OPTIONS.map((option) => option.value));
+  const builtInIds = getPredefinedModelIds(predefined);
   return {
     OPTIONS: listOnlyCustomModels
       ? customOptions
@@ -252,7 +261,7 @@ export const createProviderModelsService = (dependencies: ProviderModelsServiceD
       return;
     }
 
-    if (customOwner || predefined.OPTIONS.some((option) => option.value === modelId)) {
+    if (customOwner || getPredefinedModelIds(predefined).has(modelId)) {
       throw new AppError(`A ${provider} model with this ID already exists.`, {
         code: 'MODEL_ID_ALREADY_EXISTS',
         statusCode: 409,

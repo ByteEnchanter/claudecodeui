@@ -11,6 +11,7 @@ import type { PendingPermissionRequest, PermissionMode,
   ProviderModelsDefinition } from '@/shared/types';
 import { DEFAULT_EFFORT_VALUE } from '@/shared/constants';
 import { readSelectedProvider, writeSelectedProvider } from '@/shared/selectedProvider';
+import { findProviderModelOption } from '@/shared/utils';
 
 const FALLBACK_PROVIDER_EFFORT_VALUES: Partial<Record<LLMProvider, readonly string[]>> = {
   // Superset used only before the model catalog loads; `ultracode` belongs to the
@@ -288,10 +289,10 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     def: ProviderModelsDefinition,
   ): string => {
     const stored = localStorage.getItem(storageKey);
-    if (stored && def.OPTIONS.some((o) => o.value === stored)) {
+    if (stored && findProviderModelOption(def.OPTIONS, stored)) {
       return stored;
     }
-    if (current && def.OPTIONS.some((o) => o.value === current)) {
+    if (current && findProviderModelOption(def.OPTIONS, current)) {
       return current;
     }
     return def.DEFAULT;
@@ -306,7 +307,7 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
       return null;
     }
 
-    return definition.OPTIONS.find((option) => option.value === model) ?? null;
+    return findProviderModelOption(definition.OPTIONS, model) ?? null;
   }, [providerModelCatalog]);
 
   const getEffortOptionsForModel = useCallback((
@@ -322,8 +323,11 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
       return option.effort?.values ?? [];
     }
 
+    if (targetProvider === 'antigravity' && providerModelCatalog.antigravity) {
+      return [];
+    }
     return toProviderEffortOptions(FALLBACK_PROVIDER_EFFORT_VALUES[targetProvider] ?? []);
-  }, [getModelOption, getSupportsEffortForProvider]);
+  }, [getModelOption, getSupportsEffortForProvider, providerModelCatalog.antigravity]);
 
   const getAllowedEffortValues = useCallback((
     targetProvider: LLMProvider,
@@ -618,9 +622,21 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     effort: string,
     sessionId?: string | null,
   ) => {
-    setStoredProviderEffort(targetProvider, effort);
-
     const normalizedSessionId = typeof sessionId === 'string' ? sessionId.trim() : '';
+    const selectedModel = sessionSelection?.provider === targetProvider
+      && sessionSelection.sessionId === normalizedSessionId
+      ? sessionSelection.model ?? providerModels[targetProvider]
+      : providerModels[targetProvider];
+    const option = getModelOption(targetProvider, selectedModel);
+    const selectedLevel = effort === DEFAULT_EFFORT_VALUE ? option?.effort?.default : effort;
+    const variant = option?.effort?.values.find((level) => level.value === selectedLevel);
+    if (variant?.modelId) {
+      // This effort is represented by the model ID in both storage and the CLI.
+      const selection = await selectProviderModel(targetProvider, variant.modelId, normalizedSessionId);
+      return { scope: selection.scope, effort: variant.value };
+    }
+
+    setStoredProviderEffort(targetProvider, effort);
     if (!normalizedSessionId) {
       return { scope: 'default' as const, effort };
     }
@@ -683,7 +699,7 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
       }
       throw error;
     }
-  }, [sessionSelection, setStoredProviderEffort]);
+  }, [getModelOption, providerModels, selectProviderModel, sessionSelection, setStoredProviderEffort]);
 
   // The open session's model wins over the per-provider default, so switching
   // sessions shows (and sends) what each session actually runs with.
@@ -692,6 +708,13 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     return getEffortOptionsForModel(provider, currentProviderModel);
   }, [currentProviderModel, getEffortOptionsForModel, provider]);
   const currentProviderEffort = useMemo(() => {
+    const nativeEffort = getModelOption(provider, currentProviderModel)?.effort?.values.find(
+      (level) => level.modelId === currentProviderModel,
+    );
+    if (nativeEffort) {
+      return nativeEffort.value;
+    }
+
     return reconcileStoredEffort(
       provider,
       currentProviderModel,
@@ -699,7 +722,7 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
         ?? providerEfforts[provider]
         ?? DEFAULT_EFFORT_VALUE,
     );
-  }, [activeSessionSelection?.effort, currentProviderModel, provider, providerEfforts, reconcileStoredEffort]);
+  }, [activeSessionSelection?.effort, currentProviderModel, getModelOption, provider, providerEfforts, reconcileStoredEffort]);
   const currentProviderModelOptions = useMemo(
     () => providerModelCatalog[provider]?.OPTIONS ?? [],
     [provider, providerModelCatalog],

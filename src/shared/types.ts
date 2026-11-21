@@ -19,6 +19,8 @@ export type ProviderModelOption = {
     values: {
       value: string;
       description?: string;
+      /** Concrete provider model ID when the effort is a separately published variant. */
+      modelId?: string;
     }[];
   };
 };

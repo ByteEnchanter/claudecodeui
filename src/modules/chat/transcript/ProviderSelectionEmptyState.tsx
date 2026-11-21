@@ -25,6 +25,7 @@ import {
 import ModelGroupList, { type ModelGroup } from "@/modules/chat/composer/ModelGroupList";
 import ModelLibraryPanel from "@/modules/chat/modals/ModelLibraryPanel";
 import { writeSelectedProvider } from '@/shared/selectedProvider';
+import { findProviderModelOption } from '@/shared/utils';
 
 const PROVIDER_META: { id: LLMProvider; name: string }[] = [
   { id: "claude", name: "Anthropic" },
@@ -65,14 +66,6 @@ type ProviderSelectionEmptyStateProps = {
   onShowAllTasks?: (() => void) | null;
   setInput: React.Dispatch<React.SetStateAction<string>>;
 };
-
-function getModelConfig(
-  p: LLMProvider,
-  catalog: Partial<Record<LLMProvider, ProviderModelsDefinition>>,
-): ProviderModelsDefinition {
-  const entry = catalog[p];
-  return entry ?? { OPTIONS: [], DEFAULT: "" };
-}
 
 function getProviderDisplayName(p: LLMProvider) {
   if (p === "claude") return "Claude";
@@ -155,23 +148,20 @@ export default function ProviderSelectionEmptyState({
 
   const currentModel = providerModels[provider];
 
-  const currentModelLabel = useMemo(() => {
-    const config = getModelConfig(provider, providerModelCatalog);
-    const found = config.OPTIONS.find(
-      (o: { value: string; label: string }) => o.value === currentModel,
-    );
-    return found?.label || currentModel;
-  }, [provider, currentModel, providerModelCatalog]);
+  const currentModelOption = findProviderModelOption(providerModelCatalog[provider]?.OPTIONS ?? [], currentModel);
+  const currentModelLabel = currentModelOption?.label || currentModel;
 
   const handleModelSelect = useCallback(
     (providerId: LLMProvider, modelValue: string) => {
       setProvider(providerId);
       writeSelectedProvider(providerId);
-      setProviderModel(providerId, modelValue);
+      setProviderModel(providerId, providerId === provider && modelValue === currentModelOption?.value
+        ? currentModel
+        : modelValue);
       setPickerOpen(false);
       setTimeout(() => textareaRef.current?.focus(), 100);
     },
-    [setProvider, setProviderModel, setPickerOpen, textareaRef],
+    [currentModel, currentModelOption?.value, provider, setProvider, setProviderModel, setPickerOpen, textareaRef],
   );
 
   const openModelLibrary = () => {
@@ -277,7 +267,7 @@ export default function ProviderSelectionEmptyState({
                   <ModelGroupList
                     groups={visibleProviderGroups}
                     provider={provider}
-                    currentModel={currentModel}
+                    currentModel={currentModelOption?.value ?? currentModel}
                     loading={providerModelsLoading}
                     searching={modelSearch.trim().length > 0}
                     onSelect={handleModelSelect}

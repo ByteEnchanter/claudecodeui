@@ -1601,6 +1601,17 @@ export function runProviderCliCommand(
 }
 
 // ---------------------------
+//----------------- ANTIGRAVITY MODEL UTILITIES ------------
+/**
+ * Provider catalog and runtime code use this to split a concrete AGY variant
+ * into its family and effort. AGY rejects an effort flag conflicting with the ID.
+ */
+export function readAntigravityEffortVariant(modelId: string): { family: string; effort: string } | null {
+  const match = /^(.+)-(low|medium|high|xhigh|max)$/.exec(modelId);
+  return match ? { family: match[1], effort: match[2] } : null;
+}
+
+// ---------------------------
 //----------------- ANTIGRAVITY TRANSCRIPT UTILITIES ------------
 /**
  * Removes Antigravity metadata and settings blocks, unwraps user requests,

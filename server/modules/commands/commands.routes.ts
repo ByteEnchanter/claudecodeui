@@ -90,6 +90,7 @@ const executeModelsCommand = async (args, context, modelsService) => {
     description: option.description,
     recordId: option.recordId,
     isCustom: option.isCustom,
+    ...(option.effort ? { effort: option.effort } : {}),
   }));
 
   return {

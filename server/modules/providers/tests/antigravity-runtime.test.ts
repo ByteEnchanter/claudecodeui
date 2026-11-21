@@ -71,11 +71,11 @@ test('AGY forwards model effort and both attachment types through the shared pro
   const runtime = createAntigravityRuntime({ spawnProcess: (_command, flags) => { args = flags; return child as never; } });
   const { writer } = createWriter();
   const pending = runtime.run('Explain these', {
-    model: 'gemini-low', effort: 'high',
+    model: 'gemini-pro', effort: 'high',
     images: [{ path: '/assets/screen.png', name: '화면.png' }],
     files: [{ path: '/assets/spec.txt', name: '요구사항.txt' }],
   }, writer, createRuntimeContext({ getProviderModels: async () => ({
-    DEFAULT: 'gemini-low', OPTIONS: [{ value: 'gemini-low', label: 'Gemini', effort: { values: [{ value: 'low' }, { value: 'high' }] } }],
+    DEFAULT: 'gemini-pro', OPTIONS: [{ value: 'gemini-pro', label: 'Gemini', effort: { values: [{ value: 'low' }, { value: 'high' }] } }],
   }) }));
   await tick();
   assert.equal(args[args.indexOf('--effort') + 1], 'high');
@@ -109,6 +109,21 @@ test('AGY emits live tool calls/results once and reports usage without double-co
   const budget = messages.find((message) => message.text === 'token_budget')?.tokenBudget;
   assert.equal(budget.used, 130);
   assert.equal(budget.total, undefined);
+});
+
+test('AGY uses the selected model variant even when the session carries a conflicting saved effort', async () => {
+  const child = createFakeProcess();
+  let flags: string[] = [];
+  const runtime = createAntigravityRuntime({ spawnProcess: (_command, args) => { flags = args; return child as never; } });
+  const { writer } = createWriter();
+  const pending = runtime.run('hello', {
+    model: 'gemini-4-neon-low', effort: 'high',
+  }, writer, createRuntimeContext());
+  await tick();
+  assert.equal(flags[flags.indexOf('--model') + 1], 'gemini-4-neon-low');
+  assert.equal(flags.includes('--effort'), false);
+  finish(child);
+  await pending;
 });
 
 test('AGY does not pass effort to fixed models and rejects unsupported adjustable levels before spawning', async () => {

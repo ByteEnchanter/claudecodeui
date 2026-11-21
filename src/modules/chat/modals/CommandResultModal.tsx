@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 
 import { Badge, Button, Dialog, DialogContent, DialogTitle, Input } from '@/shared/ui';
+import { findProviderModelOption } from '@/shared/utils';
 import type {
   LLMProvider,
   ProviderModelActions,
@@ -268,6 +269,7 @@ function ModelsContent({
     const availableModels = Array.isArray(data?.availableModels) ? data.availableModels : [];
     return availableModels.map((model) => ({ value: model, label: model }));
   }, [data, liveDefinition]);
+  const currentModelOption = findProviderModelOption(availableOptions, currentModel);
   const filteredOptions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) {
@@ -350,14 +352,14 @@ function ModelsContent({
         <div className="scrollbar-thin -mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="grid gap-2 md:grid-cols-2">
             {filteredOptions.map((option, index) => {
-              const isCurrent = option.value === currentModel;
+              const isCurrent = option.value === currentModelOption?.value;
               const isPendingSelection = option.value === pendingSessionModel;
               const isChanging = option.value === changingModel;
               return (
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => handleSelectModel(option.value)}
+                  onClick={() => handleSelectModel(isCurrent ? currentModel : option.value)}
                   disabled={Boolean(changingModel)}
                   aria-label={`Select model ${option.value}`}
                   className={`settings-content-enter group flex min-h-16 flex-col rounded-2xl border p-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 ${

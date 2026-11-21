@@ -10,7 +10,7 @@ session, model, MCP, skills, and synchronization interfaces.
 | Edit a persisted prompt using the pencil, then resend | Supported | Native step anchor, independent prefix snapshot, common edit gateway |
 | Whole-session and message-point forks | Supported | Independent native SQLite snapshot and artifacts |
 | Model picker and per-session model changes | Supported | Account-specific native catalog, refreshed on read |
-| Reasoning effort, saved per session and browser default | Supported | `--effort`; only available sibling variants or declared custom levels |
+| Reasoning effort, saved per session and browser default | Supported | Model families with account-available effort choices mapped to native model IDs |
 | Custom model library and custom effort metadata | Supported | Common model library and provider validation |
 | Image and file uploads, paste/drop, restored history cards | Supported | Common validated file references; native file/image tools read the assets |
 | Live tool invocation, arguments, output and failures | Supported | Native stream-json tool events, deduplicated by step |
@@ -39,10 +39,12 @@ battle-mode histories are rejected without changing the session mapping. Like
 Codex, editing conversation history does not roll back workspace file changes.
 
 Reported token counts are session/request usage, not subscription quota. No
-context-window size or remaining plan allowance is inferred. Fixed-effort models
-have no effort picker. Native background-subagent controls, workflow timelines,
-service-tier controls, voice, and account quota are not invented when the runtime
-does not provide the corresponding common contract.
+context-window size or remaining plan allowance is inferred. Selecting an effort sends the corresponding
+native model ID. Models with one variant use that fixed ID. Custom base IDs
+with declared levels still support `--effort`.
+Native background-subagent controls, workflow timelines, service-tier controls,
+voice, and account quota are not invented when the runtime does not provide the
+corresponding common contract.
 
 Primary CLI contracts:
 
